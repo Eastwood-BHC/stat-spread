@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Radar Chart Tool</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style type="text/tailwindcss">
+        body {
+            font-family: 'Roboto', sans-serif;
+        }
+        .tab-active {
+            @apply border-sky-500 text-sky-600;
+        }
+        .tab-inactive {
+            @apply border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300;
+        }
+    </style>
+</head>
+<body class="bg-slate-100 min-h-screen flex items-center justify-center p-4">
+<div class="bg-white p-8 rounded-xl shadow-xl w-full max-w-4xl">
+<header class="mb-8 text-center">
+<input class="text-4xl font-bold text-slate-700 text-center w-full border-none focus:ring-0 focus:outline-none" id="chart-title" type="text" value="PM Archetype Chart"/>
+<p class="text-slate-500 mt-2">Input names and values for <span id="field-count-display">5</span> fields. Total points for each dataset cannot exceed 100.</p>
+</header>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+<div class="md:col-span-1 space-y-6">
+<div>
+<div class="mb-6">
+<h2 class="text-xl font-semibold text-slate-600 mb-3">Enter Details</h2>
+<div class="flex items-center justify-between mb-3">
+<label class="text-sm font-medium text-slate-600" for="num-fields">Fields:</label>
+<select class="w-20 p-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-sky-500 focus:border-sky-500 text-sm" id="num-fields" name="num-fields">
+<option value="3">3</option>
+<option value="4">4</option>
+<option selected="" value="5">5</option>
+<option value="6">6</option>
+<option value="7">7</option>
+<option value="8">8</option>
+<option value="9">9</option>
+<option value="10">10</option>
+</select>
+</div>
+<div class="flex items-center justify-between mb-4">
+<label class="text-sm font-medium text-slate-600" for="num-datasets">Datasets:</label>
+<select class="w-20 p-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-sky-500 focus:border-sky-500 text-sm" id="num-datasets" name="num-datasets">
+<option selected="" value="1">1</option>
+<option value="2">2</option>
+<option value="3">3</option>
+<option value="4">4</option>
+<option value="5">5</option>
+<option value="6">6</option>
+<option value="7">7</option>
+<option value="8">8</option>
+<option value="9">9</option>
+<option value="10">10</option>
+</select>
+</div>
+</div>
+<div class="mb-4 border-b border-slate-200">
+<nav aria-label="Tabs" class="-mb-px flex space-x-4 overflow-x-auto" id="dataset-tabs-nav">
+</nav>
+</div>
+<div class="space-y-2 mb-4" id="dataset-name-editor-container">
+<label class="text-sm font-medium text-slate-600" for="dataset-name-input">Edit Dataset Name:</label>
+<div class="flex items-center gap-2">
+<input class="w-full p-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-sky-500 focus:border-sky-500 text-sm" id="dataset-name-input" placeholder="Enter dataset name" type="text"/>
+<button class="p-2 bg-sky-500 hover:bg-sky-600 text-white rounded-md text-sm flex items-center justify-center" id="save-dataset-name-button">
+<span class="material-icons text-base">save</span>
+</button>
+</div>
+</div>
+<div class="space-y-4 max-h-[240px] overflow-y-auto pr-2" id="fields-containers">
+</div>
+</div>
+<div class="mt-6 pt-6 border-t border-slate-200 space-y-4">
+<div>
+<h3 class="text-lg font-medium text-slate-600">Total Points (<span id="current-dataset-label">Dataset 1</span>)</h3>
+<div class="flex items-center justify-between mt-2">
+<p class="text-2xl font-bold text-slate-700" id="total-points-display">0 / 100</p>
+<p class="text-sm text-red-500" id="error-message"></p>
+</div>
+</div>
+<div class="flex flex-col space-y-3">
+<button class="w-full bg-sky-500 hover:bg-sky-600 text-white font-semibold py-3 px-4 rounded-lg transition duration-150 ease-in-out flex items-center justify-center" id="export-csv-button">
+<span class="material-icons mr-2">file_download</span> Export to CSV
+                        </button>
+<button class="w-full bg-slate-500 hover:bg-slate-600 text-white font-semibold py-3 px-4 rounded-lg transition duration-150 ease-in-out flex items-center justify-center" id="reset-button">
+<span class="material-icons mr-2">refresh</span> Reset All
+                        </button>
+</div>
+</div>
+</div>
+<div class="md:col-span-2 flex items-center justify-center bg-slate-50 p-6 rounded-lg">
+<div class="w-full max-w-md h-[400px] md:h-[500px]">
+<canvas id="radarChart"></canvas>
+</div>
+</div>
+</div>
+</div>
+<script>
+        const MAX_TOTAL_POINTS = 100;
+        const MAX_DATASETS = 10;
+        let currentNumFields = 5;
+        let numVisibleDatasets = 1; // Changed default to 1
+        let chartInstance = null;
+        let fieldData = [];
+        let datasetNames = [];
+        let activeDatasetIndex = 0;
+        const defaultFieldNames = [
+            "Consumer",
+            "Growth/Data",
+            "Business/GM",
+            "Platform",
+            "Research"
+        ];
+        const fieldsContainersWrapper = document.getElementById('fields-containers');
+        const totalPointsDisplay = document.getElementById('total-points-display');
+        const errorMessageElement = document.getElementById('error-message');
+        const resetButton = document.getElementById('reset-button');
+        const numFieldsSelect = document.getElementById('num-fields');
+        const fieldCountDisplay = document.getElementById('field-count-display');
+        const chartTitleInput = document.getElementById('chart-title');
+        const exportCsvButton = document.getElementById('export-csv-button');
+        const currentDatasetLabel = document.getElementById('current-dataset-label');
+        const numDatasetsSelect = document.getElementById('num-datasets');
+        const datasetTabsNav = document.getElementById('dataset-tabs-nav');
+        const datasetNameInput = document.getElementById('dataset-name-input');
+        const saveDatasetNameButton = document.getElementById('save-dataset-name-button');
+        const datasetNameEditorContainer = document.getElementById('dataset-name-editor-container');
+        const datasetColors = [{
+            background: 'rgba(54, 162, 235, 0.3)',
+            border: 'rgb(54, 162, 235)'
+        }, {
+            background: 'rgba(255, 99, 132, 0.3)',
+            border: 'rgb(255, 99, 132)'
+        }, {
+            background: 'rgba(75, 192, 192, 0.3)',
+            border: 'rgb(75, 192, 192)'
+        }, {
+            background: 'rgba(255, 206, 86, 0.3)',
+            border: 'rgb(255, 206, 86)'
+        }, {
+            background: 'rgba(153, 102, 255, 0.3)',
+            border: 'rgb(153, 102, 255)'
+        }, {
+            background: 'rgba(255, 159, 64, 0.3)',
+            border: 'rgb(255, 159, 64)'
+        }, {
+            background: 'rgba(199, 199, 199, 0.3)',
+            border: 'rgb(199, 199, 199)'
+        }, {
+            background: 'rgba(83, 109, 254, 0.3)',
+            border: 'rgb(83, 109, 254)'
+        }, {
+            background: 'rgba(0, 204, 153, 0.3)',
+            border: 'rgb(0, 204, 153)'
+        }, {
+            background: 'rgba(255, 102, 0, 0.3)',
+            border: 'rgb(255, 102, 0)'
+        }, ];
+        function initializeDatasetNames(numDS) {
+            const newDatasetNames = [];
+            for (let i = 0; i < numDS; i++) {
+                newDatasetNames[i] = datasetNames[i] || `Dataset ${i + 1}`;
+            }
+            datasetNames = newDatasetNames;
+        }
+        function initializeFieldData(numFields, numDS) {
+            initializeDatasetNames(numDS);
+            const newFieldData = [];
+            for (let i = 0; i < numDS; i++) {
+                const datasetSpecificData = fieldData[i] || [];
+                newFieldData[i] = Array(numFields).fill(null).map((_, j) => ({
+                    name: (i === 0 && fieldData[0] && fieldData[0][j]) ? fieldData[0][j].name : (newFieldData[0] && newFieldData[0][j] ? newFieldData[0][j].name : (defaultFieldNames[j] || `Field ${j + 1}`)),
+                    value: (datasetSpecificData[j] && typeof datasetSpecificData[j].value === 'number') ? datasetSpecificData[j].value : 0
+                }));
+            }
+            fieldData = newFieldData;
+        }
+        function createFieldInputContainer(datasetIndex) {
+            const container = document.createElement('div');
+            container.id = `fields-container-dataset${datasetIndex}`;
+            container.classList.add('space-y-4');
+            if (datasetIndex !== activeDatasetIndex) {
+                container.classList.add('hidden');
+            }
+            fieldsContainersWrapper.appendChild(container);
+            return container;
+        }
+        function renderFields(datasetIndex) {
+            let container = document.getElementById(`fields-container-dataset${datasetIndex}`);
+            if (!container) {
+                container = createFieldInputContainer(datasetIndex);
+            }
+            container.innerHTML = '';
+            if (!fieldData[datasetIndex]) return;
+            fieldData[datasetIndex].forEach((field, index) => {
+                const fieldDiv = document.createElement('div');
+                fieldDiv.classList.add('flex', 'flex-col', 'gap-2', 'p-4', 'border', 'border-slate-200', 'rounded-lg', 'bg-slate-50');
+                const nameLabel = document.createElement('label');
+                nameLabel.htmlFor = `name-ds${datasetIndex}-${index}`;
+                nameLabel.classList.add('text-sm', 'font-medium', 'text-slate-600');
+                nameLabel.textContent = `Field ${index + 1} Name:`;
+                const nameInput = document.createElement('input');
+                nameInput.type = 'text';
+                nameInput.id = `name-ds${datasetIndex}-${index}`;
+                nameInput.value = field.name;
+                nameInput.classList.add('w-full', 'p-2', 'border', 'border-slate-300', 'rounded-md', 'focus:ring-2', 'focus:ring-sky-500', 'focus:border-sky-500', 'text-sm');
+                nameInput.addEventListener('input', (e) => {
+                    const newName = e.target.value;
+                    fieldData.forEach((ds, dsIdx) => {
+                        if (fieldData[dsIdx][index]) {
+                            fieldData[dsIdx][index].name = newName;
+                            const otherNameInput = document.getElementById(`name-ds${dsIdx}-${index}`);
+                            if (otherNameInput && otherNameInput !== e.target) otherNameInput.value = newName;
+                        }
+                    });
+                    updateChart();
+                });
+                const valueLabel = document.createElement('label');
+                valueLabel.htmlFor = `value-ds${datasetIndex}-${index}`;
+                valueLabel.classList.add('text-sm', 'font-medium', 'text-slate-600', 'mt-2');
+                valueLabel.textContent = `Value (0 - ${MAX_TOTAL_POINTS}):`;
+                const valueInputContainer = document.createElement('div');
+                valueInputContainer.classList.add('flex', 'items-center', 'gap-2');
+                const valueInput = document.createElement('input');
+                valueInput.type = 'number';
+                valueInput.id = `value-ds${datasetIndex}-${index}`;
+                valueInput.value = field.value;
+                valueInput.min = 0;
+                valueInput.max = MAX_TOTAL_POINTS;
+                valueInput.classList.add('w-full', 'p-2', 'border', 'border-slate-300', 'rounded-md', 'focus:ring-2', 'focus:ring-sky-500', 'focus:border-sky-500', 'text-sm', 'appearance-none', '[appearance:textfield]', '[&::-webkit-outer-spin-button]:appearance-none', '[&::-webkit-inner-spin-button]:appearance-none');
+                valueInput.addEventListener('input', (e) => {
+                    let newValue = parseInt(e.target.value) || 0;
+                    if (newValue < 0) newValue = 0;
+                    const currentTotalOtherFields = fieldData[datasetIndex].reduce((sum, fd, i) => sum + (i === index ? 0 : fd.value), 0);
+                    if (currentTotalOtherFields + newValue > MAX_TOTAL_POINTS) {
+                        newValue = MAX_TOTAL_POINTS - currentTotalOtherFields;
+                        e.target.value = newValue;
+                    }
+                    fieldData[datasetIndex][index].value = newValue;
+                    updateChart();
+                    updateTotalPoints(datasetIndex);
+                });
+                valueInputContainer.appendChild(valueInput);
+                fieldDiv.appendChild(nameLabel);
+                fieldDiv.appendChild(nameInput);
+                fieldDiv.appendChild(valueLabel);
+                fieldDiv.appendChild(valueInputContainer);
+                container.appendChild(fieldDiv);
+            });
+        }
+        function updateTotalPoints(datasetIndex) {
+            if (datasetIndex !== activeDatasetIndex || !fieldData[datasetIndex]) return;
+            const currentTotal = fieldData[datasetIndex].reduce((sum, field) => sum + field.value, 0);
+            totalPointsDisplay.textContent = `${currentTotal} / ${MAX_TOTAL_POINTS}`;
+            if (currentTotal > MAX_TOTAL_POINTS) {
+                totalPointsDisplay.classList.remove('text-slate-700');
+                totalPointsDisplay.classList.add('text-red-500');
+                errorMessageElement.textContent = 'Total points exceed 100!';
+            } else {
+                totalPointsDisplay.classList.remove('text-red-500');
+                totalPointsDisplay.classList.add('text-slate-700');
+                errorMessageElement.textContent = '';
+            }
+        }
+        function updateChart() {
+            if (!chartInstance) return;
+            const labels = fieldData[0] ? fieldData[0].map(f => f.name) : [];
+            chartInstance.data.labels = labels;
+            chartInstance.data.datasets = fieldData.slice(0, numVisibleDatasets).map((dsData, index) => {
+                const color = datasetColors[index % datasetColors.length];
+                return {
+                    label: datasetNames[index] || `Dataset ${index + 1}`,
+                    data: dsData.map(f => f.value),
+                    fill: true,
+                    backgroundColor: color.background,
+                    borderColor: color.border,
+                    pointBackgroundColor: color.border,
+                    pointBorderColor: '#fff',
+                    pointHoverBackgroundColor: '#fff',
+                    pointHoverBorderColor: color.border,
+                    hidden: false
+                };
+            });
+            for (let i = numVisibleDatasets; i < MAX_DATASETS; i++) {
+                if (chartInstance.data.datasets[i]) {
+                    chartInstance.data.datasets[i].hidden = true;
+                    chartInstance.data.datasets[i].data = [];
+                }
+            }
+            chartInstance.options.scales.r.suggestedMax = Math.max(20, Math.ceil(MAX_TOTAL_POINTS / currentNumFields) * 2);
+            chartInstance.options.plugins.legend.display = numVisibleDatasets > 0;
+            chartInstance.update();
+        }
+        function initializeChart() {
+            const ctx = document.getElementById('radarChart').getContext('2d');
+            chartInstance = new Chart(ctx, {
+                type: 'radar',
+                data: {
+                    labels: [],
+                    datasets: []
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    elements: {
+                        line: {
+                            borderWidth: 3
+                        }
+                    },
+                    scales: {
+                        r: {
+                            angleLines: {
+                                display: true,
+                                color: 'rgba(0, 0, 0, 0.1)'
+                            },
+                            suggestedMin: 0,
+                            suggestedMax: Math.max(20, Math.ceil(MAX_TOTAL_POINTS / currentNumFields) * 2),
+                            pointLabels: {
+                                font: {
+                                    size: 14,
+                                    weight: '500'
+                                },
+                                color: '#334155'
+                            },
+                            grid: {
+                                color: 'rgba(0, 0, 0, 0.1)'
+                            },
+                            ticks: {
+                                backdropColor: 'rgba(255, 255, 255, 0.75)',
+                                color: '#475569',
+                                stepSize: 20,
+                                font: {
+                                    size: 10
+                                }
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top',
+                            labels: {
+                                font: {
+                                    size: 12
+                                }
+                            }
+                        },
+                        title: {
+                            display: false,
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    if (context.parsed.r !== null) {
+                                        label += context.parsed.r;
+                                    }
+                                    return label;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        function switchTab(datasetIndex) {
+            activeDatasetIndex = datasetIndex;
+            const tabs = datasetTabsNav.querySelectorAll('button');
+            tabs.forEach((tab, idx) => {
+                if (idx === datasetIndex) {
+                    tab.classList.remove('tab-inactive');
+                    tab.classList.add('tab-active');
+                } else {
+                    tab.classList.remove('tab-active');
+                    tab.classList.add('tab-inactive');
+                }
+            });
+            const fieldContainers = fieldsContainersWrapper.querySelectorAll(':scope > div');
+            fieldContainers.forEach((container, idx) => {
+                if (idx === datasetIndex) {
+                    container.classList.remove('hidden');
+                } else {
+                    container.classList.add('hidden');
+                }
+            });
+            currentDatasetLabel.textContent = datasetNames[activeDatasetIndex] || `Dataset ${activeDatasetIndex + 1}`;
+            datasetNameInput.value = datasetNames[activeDatasetIndex] || `Dataset ${activeDatasetIndex + 1}`;
+            updateTotalPoints(activeDatasetIndex);
+            if (numVisibleDatasets > 0) {
+                datasetNameEditorContainer.classList.remove('hidden');
+            } else {
+                datasetNameEditorContainer.classList.add('hidden');
+            }
+        }
+        function renderDatasetTabs() {
+            datasetTabsNav.innerHTML = '';
+            for (let i = 0; i < numVisibleDatasets; i++) {
+                const tabButton = document.createElement('button');
+                tabButton.id = `tab-dataset${i}`;
+                tabButton.type = 'button';
+                tabButton.classList.add('whitespace-nowrap', 'py-3', 'px-1', 'border-b-2', 'font-medium', 'text-sm', 'max-w-[100px]', 'truncate');
+                tabButton.textContent = datasetNames[i] || `Dataset ${i + 1}`;
+                tabButton.title = datasetNames[i] || `Dataset ${i + 1}`;
+                if (i === activeDatasetIndex) {
+                    tabButton.classList.add('tab-active');
+                } else {
+                    tabButton.classList.add('tab-inactive');
+                }
+                tabButton.addEventListener('click', () => switchTab(i));
+                datasetTabsNav.appendChild(tabButton);
+            }
+            if (numVisibleDatasets <= 1) {
+                datasetTabsNav.classList.add('hidden');
+                 datasetNameEditorContainer.classList.add('hidden'); // Hide name editor if only one dataset
+            } else {
+                datasetTabsNav.classList.remove('hidden');
+                 datasetNameEditorContainer.classList.remove('hidden');
+            }
+        }
+        function updateDatasetControls() {
+            if (datasetNames.length > numVisibleDatasets) {
+                datasetNames.splice(numVisibleDatasets);
+            } else {
+                for (let i = datasetNames.length; i < numVisibleDatasets; i++) {
+                    datasetNames[i] = `Dataset ${i + 1}`;
+                }
+            }
+            if (fieldData.length > numVisibleDatasets) {
+                fieldData.splice(numVisibleDatasets);
+            } else {
+                for (let i = fieldData.length; i < numVisibleDatasets; i++) {
+                    fieldData[i] = Array(currentNumFields).fill(null).map((_, j) => ({
+                        name: (fieldData[0] && fieldData[0][j]) ? fieldData[0][j].name : (defaultFieldNames[j] || `Field ${j + 1}`),
+                        value: 0
+                    }));
+                }
+            }
+            if (activeDatasetIndex >= numVisibleDatasets) {
+                activeDatasetIndex = Math.max(0, numVisibleDatasets - 1);
+            }
+            const existingContainers = fieldsContainersWrapper.children;
+            while (existingContainers.length > numVisibleDatasets) {
+                fieldsContainersWrapper.removeChild(existingContainers[existingContainers.length - 1]);
+            }
+            for (let i = 0; i < numVisibleDatasets; i++) {
+                let container = document.getElementById(`fields-container-dataset${i}`);
+                if (!container) {
+                    container = createFieldInputContainer(i);
+                }
+                renderFields(i);
+            }
+            renderDatasetTabs();
+            switchTab(activeDatasetIndex);
+            updateChart();
+        }
+        function resetApplication() {
+            chartTitleInput.value = "PM Archetype Chart";
+            numFieldsSelect.value = "5";
+            currentNumFields = 5;
+            fieldCountDisplay.textContent = currentNumFields;
+            numDatasetsSelect.value = "1";
+            numVisibleDatasets = 1;
+            activeDatasetIndex = 0;
+            datasetNames = [];
+            initializeFieldData(currentNumFields, numVisibleDatasets); // This will use defaultFieldNames
+            updateDatasetControls();
+            switchTab(0);
+            updateChart();
+            updateTotalPoints(0);
+        }
+        function exportToCSV() {
+            const chartTitle = chartTitleInput.value.replace(/[^a-zA-Z0-9_]/g, '_') || 'radar_chart_data';
+            let csvContent = "data:text/csv;charset=utf-8,";
+            let headers = "Field Name";
+            for (let i = 0; i < numVisibleDatasets; i++) {
+                headers += `,Value (${datasetNames[i] || `Dataset ${i + 1}`})`;
+            }
+            csvContent += headers + "\r\n";
+            for (let i = 0; i < currentNumFields; i++) {
+                const fieldName = (fieldData[0] && fieldData[0][i]) ? fieldData[0][i].name.replace(/"/g, '""') : (defaultFieldNames[i] || `Field ${i+1}`);
+                let row = `"${fieldName}"`;
+                for (let dsIndex = 0; dsIndex < numVisibleDatasets; dsIndex++) {
+                    const value = (fieldData[dsIndex] && fieldData[dsIndex][i]) ? fieldData[dsIndex][i].value : 0;
+                    row += `,${value}`;
+                }
+                csvContent += row + "\r\n";
+            }
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", `${chartTitle}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+        saveDatasetNameButton.addEventListener('click', () => {
+            const newName = datasetNameInput.value.trim();
+            if (newName && activeDatasetIndex < datasetNames.length) {
+                datasetNames[activeDatasetIndex] = newName;
+                renderDatasetTabs();
+                currentDatasetLabel.textContent = newName;
+                updateChart();
+            }
+        });
+        numDatasetsSelect.addEventListener('change', (event) => {
+            const newNumDatasets = parseInt(event.target.value);
+            numVisibleDatasets = newNumDatasets;
+            initializeFieldData(currentNumFields, numVisibleDatasets);
+            updateDatasetControls();
+        });
+        resetButton.addEventListener('click', resetApplication);
+        exportCsvButton.addEventListener('click', exportToCSV);
+        numFieldsSelect.addEventListener('change', (event) => {
+            const newNumFields = parseInt(event.target.value);
+            currentNumFields = newNumFields;
+            fieldCountDisplay.textContent = currentNumFields;
+            const oldFieldData = JSON.parse(JSON.stringify(fieldData));
+            initializeFieldData(newNumFields, numVisibleDatasets);
+            for (let dsIndex = 0; dsIndex < numVisibleDatasets; dsIndex++) {
+                if (oldFieldData[dsIndex]) {
+                    for (let i = 0; i < Math.min(oldFieldData[dsIndex].length, newNumFields); i++) {
+                        fieldData[dsIndex][i] = oldFieldData[dsIndex][i];
+                    }
+                }
+                if (newNumFields > (oldFieldData[dsIndex] ? oldFieldData[dsIndex].length : 0)) {
+                    for (let i = (oldFieldData[dsIndex] ? oldFieldData[dsIndex].length : 0); i < newNumFields; i++) {
+                        fieldData[dsIndex][i].name = (fieldData[0] && fieldData[0][i]) ? fieldData[0][i].name : (defaultFieldNames[i] || `Field ${i + 1}`);
+                    }
+                }
+                let currentTotal = fieldData[dsIndex].reduce((sum, field) => sum + field.value, 0);
+                if (currentTotal > MAX_TOTAL_POINTS) {
+                    fieldData[dsIndex].forEach(field => field.value = 0);
+                }
+            }
+            updateDatasetControls();
+            updateChart();
+            updateTotalPoints(activeDatasetIndex);
+        });
+        chartTitleInput.addEventListener('input', () => {
+            updateChart();
+        });
+        initializeChart();
+        resetApplication(); // Call reset to set up with new defaults
+    </script>
+
+</body></html>
